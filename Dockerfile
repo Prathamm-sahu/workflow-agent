@@ -43,6 +43,6 @@ ENV PORT=3000
 ENV DATABASE_URL=file:/app/data/noc.db
 
 # Push schema to create tables on first run, then start app
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
 
 EXPOSE 3000
