@@ -1,10 +1,6 @@
 import axios from 'axios';
 import { AppConfig } from '../config';
 
-/**
- * Zoho OpManager REST API client.
- * Auth: apiKey as URL parameter (on-premise).
- */
 export class OpManagerClient {
   private baseUrl: string;
   private apiKey: string;
@@ -16,10 +12,6 @@ export class OpManagerClient {
     this.dryRun = config.dryRun;
   }
 
-  /**
-   * Acknowledge an alarm in OpManager.
-   * POST /api/json/alarm/acknowledgeAlarm?apiKey=...&entity=...
-   */
   async acknowledgeAlarm(alarmEntity: string): Promise<{ success: boolean }> {
     const url = `${this.baseUrl}/api/json/alarm/acknowledgeAlarm`;
 
@@ -72,10 +64,6 @@ export class OpManagerClient {
     }
   }
 
-  /**
-   * List alarms from OpManager (for monitoring/sync).
-   * GET /api/json/alarm/listAlarms?apiKey=...
-   */
   async listAlarms(params?: {
     severity?: string;
     deviceName?: string;

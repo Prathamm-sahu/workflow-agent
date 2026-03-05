@@ -12,37 +12,37 @@ import { seedDefaultData } from './seed';
 const config = loadConfig();
 const app = express();
 
-// ─── Middleware ───────────────────────────────────────────────
 app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json());
 
-// ─── Services ────────────────────────────────────────────────
 const orchestrator = new WorkflowOrchestrator(config);
-
-// ─── Routes ──────────────────────────────────────────────────
 app.use('/api/webhooks', createWebhookRoutes(orchestrator));
 app.use('/api/rules', createRulesRoutes());
 app.use('/api/dashboard', createDashboardRoutes());
 app.use('/api/config', createConfigRoutes());
 
-// Health check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), dryRun: config.dryRun });
 });
 
-// ─── Error Handler ───────────────────────────────────────────
 app.use(errorHandler);
 
-// ─── Seed Data ───────────────────────────────────────────────
-seedDefaultData();
+async function main() {
+  await seedDefaultData();
 
-// ─── Start Server ────────────────────────────────────────────
-app.listen(config.port, () => {
-  console.log(`\n🚀 NOC Automation Server running on port ${config.port}`);
-  console.log(`   Mode: ${config.dryRun ? 'DRY-RUN (no external API calls)' : 'LIVE'}`);
-  console.log(`   ServiceDesk: ${config.serviceDesk.baseUrl}`);
-  console.log(`   OpManager:   ${config.opManager.baseUrl}`);
-  console.log(`   Correlation Window: ${config.correlationWindowMinutes} minutes\n`);
+  app.listen(config.port, () => {
+    console.log(`\n🚀 NOC Automation Server running on port ${config.port}`);
+    console.log(`   Mode: ${config.dryRun ? 'DRY-RUN (no external API calls)' : 'LIVE'}`);
+    console.log(`   Database: SQLite (Prisma)`);
+    console.log(`   ServiceDesk: ${config.serviceDesk.baseUrl}`);
+    console.log(`   OpManager:   ${config.opManager.baseUrl}`);
+    console.log(`   Correlation Window: ${config.correlationWindowMinutes} minutes\n`);
+  });
+}
+
+main().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
 
 export default app;

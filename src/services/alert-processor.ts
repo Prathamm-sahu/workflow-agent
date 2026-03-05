@@ -1,20 +1,13 @@
 import { v4 as uuid } from 'uuid';
 import { OpManagerWebhookPayload } from '../types/opmanager';
 import { Alert, Severity } from '../types/models';
-import { db } from '../db/in-memory';
+import { db } from '../db/prisma';
 
 const VALID_SEVERITIES: Severity[] = ['Critical', 'Trouble', 'Attention', 'Clear'];
 
-/**
- * Parses and normalizes incoming OpManager webhook payloads into Alert records.
- * Handles validation and deduplication.
- */
 export class AlertProcessor {
-  /**
-   * Process an incoming webhook payload.
-   * Returns the Alert if new, or null if deduplicated.
-   */
-  process(payload: OpManagerWebhookPayload): Alert | null {
+
+  async process(payload: OpManagerWebhookPayload): Promise<Alert | null> {
     // Validate required fields
     this.validate(payload);
 
@@ -22,14 +15,13 @@ export class AlertProcessor {
     const cycleId = payload.alarm?.cycleId || '';
 
     // Check deduplication
-    const existing = db.findAlertByAlarm(alarmId, cycleId);
+    const existing = await db.findAlertByAlarm(alarmId, cycleId);
     if (existing) {
-      // Update existing alert with latest severity/status
       existing.severity = this.normalizeSeverity(payload.alarm.severity);
       existing.message = payload.alarm.message;
       existing.lastModifiedTime = payload.alarm.lastModifiedTime;
-      db.saveAlert(existing);
-      db.addAuditLog('alert_deduplicated', 'alert', existing.id, {
+      await db.saveAlert(existing);
+      await db.addAuditLog('alert_deduplicated', 'alert', existing.id, {
         alarmId,
         cycleId,
         newSeverity: payload.alarm.severity,
@@ -74,8 +66,8 @@ export class AlertProcessor {
       rawPayload: payload as unknown as Record<string, unknown>,
     };
 
-    db.saveAlert(alert);
-    db.addAuditLog('alert_received', 'alert', alert.id, {
+    await db.saveAlert(alert);
+    await db.addAuditLog('alert_received', 'alert', alert.id, {
       alarmId: alert.alarmId,
       severity: alert.severity,
       eventType: alert.eventType,
@@ -86,9 +78,6 @@ export class AlertProcessor {
     return alert;
   }
 
-  /**
-   * Validate that the payload has minimum required fields.
-   */
   private validate(payload: OpManagerWebhookPayload): void {
     if (!payload.alarm) {
       throw new Error('Missing alarm data in webhook payload');
@@ -98,28 +87,20 @@ export class AlertProcessor {
     }
   }
 
-  /**
-   * Normalize severity string to a known Severity type.
-   */
   private normalizeSeverity(severity: string): Severity {
     const normalized = severity?.trim();
     if (VALID_SEVERITIES.includes(normalized as Severity)) {
       return normalized as Severity;
     }
-    // Map common alternatives
     const lower = normalized?.toLowerCase() || '';
     if (lower.includes('critical')) return 'Critical';
     if (lower.includes('trouble') || lower.includes('major')) return 'Trouble';
     if (lower.includes('attention') || lower.includes('warning') || lower.includes('minor'))
       return 'Attention';
     if (lower.includes('clear') || lower.includes('ok')) return 'Clear';
-    return 'Attention'; // default
+    return 'Attention'; 
   }
 
-  /**
-   * Extract the site identifier from the payload.
-   * Tries building → siteAddress → device name prefix.
-   */
   private extractSite(payload: OpManagerWebhookPayload): string {
     const location = payload.device?.location;
     if (location?.building && location.building.trim()) {
@@ -128,7 +109,6 @@ export class AlertProcessor {
     if (location?.siteAddress && location.siteAddress.trim()) {
       return location.siteAddress.trim();
     }
-    // Fallback: use device name as site
     return payload.device?.name || 'Unknown-Site';
   }
 }

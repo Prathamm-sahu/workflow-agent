@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
+import https from 'https';
 import { AppConfig } from '../config';
 import {
   ServiceDeskRequestInput,
@@ -6,48 +7,58 @@ import {
   ServiceDeskResponse,
 } from '../types/servicedesk';
 
-/**
- * ServiceDesk Plus MSP On-Premise API v3 client.
- * Auth: technician_key via TECHNICIAN_KEY URL parameter.
- * Endpoint: http://<server>:<port>/api/v3/requests
- */
 export class ServiceDeskClient {
   private baseUrl: string;
   private apiKey: string;
   private dryRun: boolean;
+  private http: AxiosInstance;
 
   constructor(config: AppConfig) {
     this.baseUrl = config.serviceDesk.baseUrl.replace(/\/+$/, '');
     this.apiKey = config.serviceDesk.apiKey;
     this.dryRun = config.dryRun;
+
+    // Create axios instance with self-signed cert support (equivalent to curl -k)
+    this.http = axios.create({
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/vnd.manageengine.sdp.v3+json',
+        'authtoken': this.apiKey,
+      },
+    });
   }
 
-  /**
-   * Create a new request (ticket) in ServiceDesk Plus.
-   * POST /api/v3/requests
-   */
+  private extractError(error: unknown): string {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const responseBody = error.response?.data;
+      const details = responseBody
+        ? JSON.stringify(responseBody, null, 2)
+        : error.message || 'No response body';
+      return `HTTP ${status || 'N/A'} — ${details}`;
+    }
+    return error instanceof Error ? error.message : String(error);
+  }
+
   async createRequest(
     input: ServiceDeskRequestInput
   ): Promise<{ id: string; success: boolean; data?: ServiceDeskResponse }> {
     const url = `${this.baseUrl}/api/v3/requests`;
 
+    console.log('[ServiceDesk] Creating request:', JSON.stringify(input, null, 2));
+
     if (this.dryRun) {
-      console.log('[DRY-RUN] ServiceDesk createRequest:', JSON.stringify(input, null, 2));
       const fakeId = `DRY-${Date.now()}`;
       return { id: fakeId, success: true };
     }
 
     try {
-      const response = await axios.post(url, null, {
-        params: {
-          TECHNICIAN_KEY: this.apiKey,
-          input_data: JSON.stringify(input),
-        },
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-      });
+      const formData = new URLSearchParams();
+      formData.append('input_data', JSON.stringify(input));
+      const response = await this.http.post(url, formData.toString());
+
+      console.log('[ServiceDesk] Create response:', JSON.stringify(response.data));
 
       const data = response.data as ServiceDeskResponse;
       return {
@@ -56,16 +67,12 @@ export class ServiceDeskClient {
         data,
       };
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error('[ServiceDesk] Failed to create request:', errMsg);
-      throw new Error(`ServiceDesk createRequest failed: ${errMsg}`);
+      const errDetail = this.extractError(error);
+      console.error('[ServiceDesk] Failed to create request:', errDetail);
+      throw new Error(`ServiceDesk createRequest failed: ${errDetail}`);
     }
   }
 
-  /**
-   * Update an existing request.
-   * PUT /api/v3/requests/{id}
-   */
   async updateRequest(
     requestId: string,
     input: Partial<ServiceDeskRequestInput>
@@ -78,28 +85,17 @@ export class ServiceDeskClient {
     }
 
     try {
-      await axios.put(url, null, {
-        params: {
-          TECHNICIAN_KEY: this.apiKey,
-          input_data: JSON.stringify(input),
-        },
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-      });
+      const formData = new URLSearchParams();
+      formData.append('input_data', JSON.stringify(input));
+      await this.http.put(url, formData.toString());
       return { success: true };
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[ServiceDesk] Failed to update request ${requestId}:`, errMsg);
-      throw new Error(`ServiceDesk updateRequest failed: ${errMsg}`);
+      const errDetail = this.extractError(error);
+      console.error(`[ServiceDesk] Failed to update request ${requestId}:`, errDetail);
+      throw new Error(`ServiceDesk updateRequest failed: ${errDetail}`);
     }
   }
 
-  /**
-   * Close a request.
-   * PUT /api/v3/requests/{id}/close
-   */
   async closeRequest(
     requestId: string,
     input?: ServiceDeskCloseInput
@@ -120,28 +116,17 @@ export class ServiceDeskClient {
     }
 
     try {
-      await axios.put(url, null, {
-        params: {
-          TECHNICIAN_KEY: this.apiKey,
-          input_data: JSON.stringify(body),
-        },
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-      });
+      const formData = new URLSearchParams();
+      formData.append('input_data', JSON.stringify(body));
+      await this.http.put(url, formData.toString());
       return { success: true };
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[ServiceDesk] Failed to close request ${requestId}:`, errMsg);
-      throw new Error(`ServiceDesk closeRequest failed: ${errMsg}`);
+      const errDetail = this.extractError(error);
+      console.error(`[ServiceDesk] Failed to close request ${requestId}:`, errDetail);
+      throw new Error(`ServiceDesk closeRequest failed: ${errDetail}`);
     }
   }
 
-  /**
-   * Get request details.
-   * GET /api/v3/requests/{id}
-   */
   async getRequest(requestId: string): Promise<ServiceDeskResponse | null> {
     const url = `${this.baseUrl}/api/v3/requests/${requestId}`;
 
@@ -151,15 +136,13 @@ export class ServiceDeskClient {
     }
 
     try {
-      const response = await axios.get(url, {
-        params: { TECHNICIAN_KEY: this.apiKey },
-        headers: { Accept: 'application/json' },
-      });
+      const response = await this.http.get(url);
       return response.data as ServiceDeskResponse;
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[ServiceDesk] Failed to get request ${requestId}:`, errMsg);
+      const errDetail = this.extractError(error);
+      console.error(`[ServiceDesk] Failed to get request ${requestId}:`, errDetail);
       return null;
     }
   }
 }
+

@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { Alert, Incident, Severity } from '../types/models';
-import { db } from '../db/in-memory';
+import { db } from '../db/prisma';
 import { AppConfig } from '../config';
 
 const SEVERITY_ORDER: Record<Severity, number> = {
@@ -10,9 +10,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   Critical: 3,
 };
 
-/**
- * Groups related alerts into incidents using site-based and dependency-based correlation.
- */
 export class CorrelationEngine {
   private windowMs: number;
 
@@ -20,13 +17,10 @@ export class CorrelationEngine {
     this.windowMs = config.correlationWindowMinutes * 60 * 1000;
   }
 
-  /**
-   * Correlate an alert — either adds it to an existing incident or creates a new one.
-   * Returns the incident (new or updated).
-   */
-  correlate(alert: Alert): Incident {
+
+  async correlate(alert: Alert): Promise<Incident> {
     // 1. Try to find an existing open incident for the same site within the time window
-    const existingIncident = this.findCorrelatedIncident(alert);
+    const existingIncident = await this.findCorrelatedIncident(alert);
 
     if (existingIncident) {
       return this.addToIncident(existingIncident, alert);
@@ -36,48 +30,32 @@ export class CorrelationEngine {
     return this.createIncident(alert);
   }
 
-  /**
-   * Find an existing open incident that this alert should be correlated with.
-   */
-  private findCorrelatedIncident(alert: Alert): Incident | undefined {
+
+  private async findCorrelatedIncident(alert: Alert): Promise<Incident | undefined> {
     const now = Date.now();
 
     // Check for open incidents at the same site within the correlation window
-    const siteIncidents = Array.from(db.incidents.values()).filter(
-      (inc) =>
-        inc.site === alert.site &&
-        (inc.status === 'open' || inc.status === 'ticket_created') &&
-        now - inc.updatedAt.getTime() < this.windowMs
-    );
+    const siteIncident = await db.findOpenIncidentBySite(alert.site);
 
-    if (siteIncidents.length > 0) {
-      // Return the most recent one
-      return siteIncidents.sort(
-        (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-      )[0];
+    if (siteIncident && now - siteIncident.updatedAt.getTime() < this.windowMs) {
+      return siteIncident;
     }
 
     // Check dependency — if the alert device has a parent dependency
-    if (alert.deviceDependent) {
-      const parentIncident = Array.from(db.incidents.values()).find(
-        (inc) =>
-          (inc.status === 'open' || inc.status === 'ticket_created') &&
-          now - inc.updatedAt.getTime() < this.windowMs &&
-          inc.alertIds.some((aid) => {
-            const parentAlert = db.getAlert(aid);
-            return parentAlert && parentAlert.deviceName === alert.deviceDependent;
-          })
-      );
-      if (parentIncident) return parentIncident;
+    if (alert.deviceDependent && siteIncident) {
+      // Check if any alert in the incident matches the parent device
+      for (const alertId of siteIncident.alertIds) {
+        const parentAlert = await db.getAlert(alertId);
+        if (parentAlert && parentAlert.deviceName === alert.deviceDependent) {
+          return siteIncident;
+        }
+      }
     }
 
     return undefined;
   }
 
-  /**
-   * Add an alert to an existing incident, potentially escalating severity.
-   */
-  private addToIncident(incident: Incident, alert: Alert): Incident {
+  private async addToIncident(incident: Incident, alert: Alert): Promise<Incident> {
     incident.alertIds.push(alert.id);
     incident.updatedAt = new Date();
 
@@ -88,15 +66,15 @@ export class CorrelationEngine {
     }
 
     // Update summary
-    incident.summary = this.buildSummary(incident);
+    incident.summary = await this.buildSummary(incident);
 
     // Link alert to incident
     alert.incidentId = incident.id;
     alert.status = 'processing';
-    db.saveAlert(alert);
-    db.saveIncident(incident);
+    await db.saveAlert(alert);
+    await db.saveIncident(incident);
 
-    db.addAuditLog('incident_updated', 'incident', incident.id, {
+    await db.addAuditLog('incident_updated', 'incident', incident.id, {
       alertId: alert.id,
       totalAlerts: incident.alertIds.length,
       severity: incident.severity,
@@ -108,7 +86,7 @@ export class CorrelationEngine {
   /**
    * Create a new incident from a single alert.
    */
-  private createIncident(alert: Alert): Incident {
+  private async createIncident(alert: Alert): Promise<Incident> {
     const incident: Incident = {
       id: uuid(),
       alertIds: [alert.id],
@@ -123,15 +101,14 @@ export class CorrelationEngine {
       updatedAt: new Date(),
     };
 
-    incident.summary = this.buildSummary(incident);
+    incident.summary = await this.buildSummary(incident);
 
-    // Link alert to incident
     alert.incidentId = incident.id;
     alert.status = 'processing';
-    db.saveAlert(alert);
-    db.saveIncident(incident);
+    await db.saveAlert(alert);
+    await db.saveIncident(incident);
 
-    db.addAuditLog('incident_created', 'incident', incident.id, {
+    await db.addAuditLog('incident_created', 'incident', incident.id, {
       alertId: alert.id,
       severity: incident.severity,
       site: incident.site,
@@ -141,13 +118,12 @@ export class CorrelationEngine {
     return incident;
   }
 
-  /**
-   * Build a human-readable summary for the incident.
-   */
-  private buildSummary(incident: Incident): string {
-    const alerts = incident.alertIds
-      .map((id) => db.getAlert(id))
-      .filter(Boolean) as Alert[];
+  private async buildSummary(incident: Incident): Promise<string> {
+    const alerts: Alert[] = [];
+    for (const id of incident.alertIds) {
+      const a = await db.getAlert(id);
+      if (a) alerts.push(a);
+    }
 
     if (alerts.length === 1) {
       const a = alerts[0];

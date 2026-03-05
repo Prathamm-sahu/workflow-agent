@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db/in-memory';
+import { db } from '../db/prisma';
 import { AuditService } from '../services/audit.service';
 
 export function createDashboardRoutes(): Router {
@@ -9,46 +9,46 @@ export function createDashboardRoutes(): Router {
   /**
    * GET /api/dashboard/stats — Overview metrics
    */
-  router.get('/stats', (_req: Request, res: Response) => {
-    const stats = db.getStats();
+  router.get('/stats', async (_req: Request, res: Response) => {
+    const stats = await db.getStats();
     res.json(stats);
   });
 
   /**
    * GET /api/dashboard/alerts — Recent alerts
    */
-  router.get('/alerts', (req: Request, res: Response) => {
+  router.get('/alerts', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 50;
-    const alerts = db.getRecentAlerts(limit);
+    const alerts = await db.getRecentAlerts(limit);
     res.json({ alerts, total: alerts.length });
   });
 
   /**
    * GET /api/dashboard/incidents — Active incidents
    */
-  router.get('/incidents', (_req: Request, res: Response) => {
-    const incidents = db.getActiveIncidents();
+  router.get('/incidents', async (_req: Request, res: Response) => {
+    const incidents = await db.getActiveIncidents();
     res.json({ incidents, total: incidents.length });
   });
 
   /**
    * GET /api/dashboard/tickets — Recent tickets
    */
-  router.get('/tickets', (req: Request, res: Response) => {
+  router.get('/tickets', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 50;
-    const tickets = db.getRecentTickets(limit);
+    const tickets = await db.getRecentTickets(limit);
     res.json({ tickets, total: tickets.length });
   });
 
   /**
    * GET /api/dashboard/audit-logs — Audit trail
    */
-  router.get('/audit-logs', (req: Request, res: Response) => {
+  router.get('/audit-logs', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 100;
     const action = req.query.action as string | undefined;
     const entityType = req.query.entityType as string | undefined;
 
-    const logs = auditService.getLogs({
+    const logs = await auditService.getLogs({
       action: action as any,
       entityType: entityType as any,
       limit,

@@ -9,13 +9,9 @@ import { CorrelationEngine } from './correlation-engine';
 import { ServiceDeskClient } from './servicedesk.client';
 import { OpManagerClient } from './opmanager.client';
 import { AuditService } from './audit.service';
-import { db } from '../db/in-memory';
+import { db } from '../db/prisma';
 import { AppConfig } from '../config';
 
-/**
- * Orchestrates the full workflow:
- * Webhook → Parse → Filter → Correlate → Create Ticket → Acknowledge Alarm
- */
 export class WorkflowOrchestrator {
   private alertProcessor: AlertProcessor;
   private ruleEngine: RuleEngine;
@@ -33,10 +29,6 @@ export class WorkflowOrchestrator {
     this.auditService = new AuditService();
   }
 
-  /**
-   * Handle an incoming OpManager webhook.
-   * This is the main entry point for the workflow.
-   */
   async handleWebhook(payload: OpManagerWebhookPayload): Promise<{
     action: string;
     alertId?: string;
@@ -44,7 +36,7 @@ export class WorkflowOrchestrator {
     ticketId?: string;
   }> {
     // 1. Parse and validate the alert
-    const alert = this.alertProcessor.process(payload);
+    const alert = await this.alertProcessor.process(payload);
 
     if (!alert) {
       return { action: 'deduplicated' };
@@ -56,16 +48,16 @@ export class WorkflowOrchestrator {
     }
 
     // 3. Evaluate against filter rules
-    const matchedRule = this.ruleEngine.evaluate(alert);
+    const matchedRule = await this.ruleEngine.evaluate(alert);
 
     if (!matchedRule) {
       alert.status = 'ignored';
-      db.saveAlert(alert);
+      await db.saveAlert(alert);
       return { action: 'ignored', alertId: alert.id };
     }
 
     // 4. Correlate into an incident
-    const incident = this.correlationEngine.correlate(alert);
+    const incident = await this.correlationEngine.correlate(alert);
 
     // 5. Take action based on the rule
     if (matchedRule.actions.createTicket) {
@@ -74,7 +66,7 @@ export class WorkflowOrchestrator {
         const ticketId = await this.createTicket(incident, alert, matchedRule);
         incident.ticketId = ticketId;
         incident.status = 'ticket_created';
-        db.saveIncident(incident);
+        await db.saveIncident(incident);
 
         // Acknowledge the alarm in OpManager
         if (matchedRule.actions.acknowledgeAlarm) {
@@ -108,39 +100,34 @@ export class WorkflowOrchestrator {
     return { action: 'rule_matched_no_ticket', alertId: alert.id };
   }
 
-  /**
-   * Handle a "Clear" severity alarm — find and close the corresponding ticket.
-   */
   private async handleClearAlarm(alert: Alert): Promise<{
     action: string;
     alertId: string;
     incidentId?: string;
   }> {
     // Find the incident for the same site
-    const incident = db.findOpenIncidentBySite(alert.site);
+    const incident = await db.findOpenIncidentBySite(alert.site);
 
     if (incident && incident.ticketId) {
       try {
         await this.serviceDeskClient.closeRequest(incident.ticketId);
         incident.status = 'closed';
-        db.saveIncident(incident);
+        await db.saveIncident(incident);
 
         // Update ticket record
-        const ticketRecord = Array.from(db.tickets.values()).find(
-          (t) => t.serviceDeskRequestId === incident.ticketId
-        );
+        const ticketRecord = await db.findTicketByServiceDeskId(incident.ticketId);
         if (ticketRecord) {
           ticketRecord.status = 'closed';
           ticketRecord.updatedAt = new Date();
-          db.saveTicket(ticketRecord);
+          await db.saveTicket(ticketRecord);
         }
 
-        this.auditService.log('ticket_closed', 'ticket', incident.ticketId!, {
+        await this.auditService.log('ticket_closed', 'ticket', incident.ticketId!, {
           incidentId: incident.id,
           reason: 'Alarm cleared',
         });
       } catch (error) {
-        this.auditService.log('error', 'system', alert.id, {
+        await this.auditService.log('error', 'system', alert.id, {
           operation: 'close_ticket',
           error: error instanceof Error ? error.message : String(error),
         });
@@ -148,9 +135,9 @@ export class WorkflowOrchestrator {
     }
 
     alert.status = 'cleared';
-    db.saveAlert(alert);
+    await db.saveAlert(alert);
 
-    this.auditService.log('alarm_cleared', 'alarm', alert.alarmId, {
+    await this.auditService.log('alarm_cleared', 'alarm', alert.alarmId, {
       alertId: alert.id,
       site: alert.site,
     });
@@ -162,16 +149,15 @@ export class WorkflowOrchestrator {
     };
   }
 
-  /**
-   * Create a ticket in ServiceDesk Plus.
-   */
   private async createTicket(
     incident: Incident,
     alert: Alert,
     rule: FilterRule
   ): Promise<string> {
     // Get site contact for assignment
-    const siteContact = db.getSiteContact(alert.site);
+    const siteContact = await db.getSiteContact(alert.site);
+
+    console.log('Site Contact:', siteContact);
     const assignee = siteContact?.personA;
 
     const description = this.buildTicketDescription(incident, alert);
@@ -181,11 +167,13 @@ export class WorkflowOrchestrator {
         subject: `[${alert.severity}] ${alert.eventType} — ${alert.deviceName} at ${alert.site}`,
         description,
         priority: { name: rule.actions.priority || 'High' },
-        site: { name: alert.site },
         request_type: { name: 'Incident' },
         category: { name: 'Network' },
         urgency: { name: alert.severity === 'Critical' ? 'Urgent' : 'Normal' },
-        impact: { name: alert.severity === 'Critical' ? 'Affects Business' : 'Affects Department' },
+        requester: {
+          id: "4",
+          name: "administrator"
+        }
       },
     };
 
@@ -198,6 +186,7 @@ export class WorkflowOrchestrator {
     }
 
     try {
+      console.log('Creating ticket in ServiceDesk Plus...');
       const result = await this.serviceDeskClient.createRequest(input);
 
       // Save ticket record
@@ -213,13 +202,13 @@ export class WorkflowOrchestrator {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      db.saveTicket(ticketRecord);
+      await db.saveTicket(ticketRecord);
 
       // Update alert status
       alert.status = 'ticket_created';
-      db.saveAlert(alert);
+      await db.saveAlert(alert);
 
-      this.auditService.log('ticket_created', 'ticket', result.id, {
+      await this.auditService.log('ticket_created', 'ticket', result.id, {
         incidentId: incident.id,
         subject: input.request.subject,
         priority: rule.actions.priority,
@@ -228,7 +217,7 @@ export class WorkflowOrchestrator {
 
       return result.id;
     } catch (error) {
-      this.auditService.log('error', 'system', incident.id, {
+      await this.auditService.log('error', 'system', incident.id, {
         operation: 'create_ticket',
         error: error instanceof Error ? error.message : String(error),
       });
@@ -236,15 +225,14 @@ export class WorkflowOrchestrator {
     }
   }
 
-  /**
-   * Update an existing ticket with new alert information.
-   */
   private async updateTicket(incident: Incident): Promise<void> {
     if (!incident.ticketId) return;
 
-    const alerts = incident.alertIds
-      .map((id) => db.getAlert(id))
-      .filter(Boolean) as Alert[];
+    const alerts: Alert[] = [];
+    for (const id of incident.alertIds) {
+      const a = await db.getAlert(id);
+      if (a) alerts.push(a);
+    }
 
     const additionalInfo = alerts
       .slice(1) // skip the first (original) alert
@@ -263,42 +251,36 @@ export class WorkflowOrchestrator {
         },
       });
 
-      this.auditService.log('ticket_updated', 'ticket', incident.ticketId, {
+      await this.auditService.log('ticket_updated', 'ticket', incident.ticketId, {
         incidentId: incident.id,
         totalAlerts: incident.alertIds.length,
       });
     } catch (error) {
-      this.auditService.log('error', 'system', incident.id, {
+      await this.auditService.log('error', 'system', incident.id, {
         operation: 'update_ticket',
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  /**
-   * Acknowledge an alarm in OpManager.
-   */
   private async acknowledgeAlarm(alert: Alert): Promise<void> {
     try {
       await this.opManagerClient.acknowledgeAlarm(alert.entity || alert.alarmId);
       alert.status = 'acknowledged';
-      db.saveAlert(alert);
+      await db.saveAlert(alert);
 
-      this.auditService.log('alarm_acknowledged', 'alarm', alert.alarmId, {
+      await this.auditService.log('alarm_acknowledged', 'alarm', alert.alarmId, {
         alertId: alert.id,
         entity: alert.entity,
       });
     } catch (error) {
-      this.auditService.log('error', 'system', alert.id, {
+      await this.auditService.log('error', 'system', alert.id, {
         operation: 'acknowledge_alarm',
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  /**
-   * Build a detailed ticket description.
-   */
   private buildTicketDescription(incident: Incident, alert: Alert): string {
     const sections: string[] = [
       `== NOC Automation Alert ==`,

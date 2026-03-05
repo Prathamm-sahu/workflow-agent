@@ -1,14 +1,8 @@
-/**
- * ServiceDesk Plus MSP On-Premise API types.
- * Based on API v3 endpoint: /api/v3/requests
- * Auth: technician_key via authtoken header
- */
-
 export interface ServiceDeskRequestInput {
   request: {
     subject: string;
     description: string;
-    requester?: { name: string; email_id?: string };
+    requester?: { id: string; name: string };
     priority?: { name: string };
     status?: { name: string };
     site?: { name: string };

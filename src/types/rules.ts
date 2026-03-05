@@ -1,12 +1,8 @@
-/**
- * Filter rule types for the rule engine.
- */
-
 export type RuleOperator = 'equals' | 'notEquals' | 'contains' | 'in' | 'notIn';
-export type MatchMode = 'all' | 'any'; // AND vs OR
+export type MatchMode = 'all' | 'any'; 
 
 export interface RuleCondition {
-  field: string;            // dot-notation path e.g. "severity", "deviceCategory", "eventType"
+  field: string;            
   operator: RuleOperator;
   value: string | string[];
 }
@@ -14,8 +10,8 @@ export interface RuleCondition {
 export interface RuleAction {
   createTicket: boolean;
   acknowledgeAlarm: boolean;
-  priority: string;          // ServiceDesk ticket priority: "High", "Medium", "Low"
-  templateName?: string;     // optional ticket description template name
+  priority: string;          
+  templateName?: string;     
 }
 
 export interface FilterRule {
@@ -25,5 +21,5 @@ export interface FilterRule {
   conditions: RuleCondition[];
   matchMode: MatchMode;
   actions: RuleAction;
-  order: number;            // evaluation order (lower = higher priority)
+  order: number; 
 }

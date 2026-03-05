@@ -1,8 +1,3 @@
-/**
- * OpManager webhook payload types.
- * Matches the JSON structure sent by OpManager notification profiles.
- */
-
 export interface OpManagerWebhookPayload {
   source: string;
   profile: {

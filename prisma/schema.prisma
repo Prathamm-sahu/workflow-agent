@@ -1,0 +1,158 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Alert ───────────────────────────────────────────────────
+model Alert {
+  id                String   @id @default(uuid())
+  alarmId           String
+  cycleId           String
+  severity          String   // Critical, Trouble, Attention, Clear
+  eventType         String
+  message           String
+  entity            String   @default("")
+  lastPolledValue   String   @default("")
+  rootCause         String   @default("")
+
+  // Device info
+  deviceName        String
+  deviceCategory    String   @default("")
+  deviceType        String   @default("")
+  deviceIp          String   @default("")
+  deviceVendor      String   @default("")
+  deviceDependent   String   @default("")
+
+  // Location
+  site              String
+  building          String   @default("")
+  floor             String   @default("")
+
+  // Interface info
+  interfaceName     String   @default("")
+  interfaceIp       String   @default("")
+  interfaceCircuitId String  @default("")
+
+  // Monitor info
+  monitorName       String   @default("")
+
+  // Metadata
+  status            String   @default("new") // new, processing, ticket_created, acknowledged, ignored, cleared
+  incidentId        String?
+  receivedAt        DateTime @default(now())
+  lastModifiedTime  String   @default("")
+  rawPayload        String   @default("{}") // JSON string
+
+  // Relations
+  incidents         IncidentAlert[]
+
+  // Dedup index
+  @@unique([alarmId, cycleId])
+  @@index([site])
+  @@index([status])
+}
+
+// ─── Incident ────────────────────────────────────────────────
+model Incident {
+  id          String   @id @default(uuid())
+  severity    String   // Critical, Trouble, Attention, Clear
+  site        String
+  eventType   String
+  summary     String
+  ticketId    String?  // ServiceDesk request ID
+  status      String   @default("open") // open, ticket_created, escalated, resolved, closed
+  assignee    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  alerts      IncidentAlert[]
+  tickets     TicketRecord[]
+
+  @@index([site, status])
+}
+
+// ─── Join table: Incident ↔ Alert ────────────────────────────
+model IncidentAlert {
+  id         String   @id @default(uuid())
+  incidentId String
+  alertId    String
+
+  incident   Incident @relation(fields: [incidentId], references: [id])
+  alert      Alert    @relation(fields: [alertId], references: [id])
+
+  @@unique([incidentId, alertId])
+}
+
+// ─── Ticket Record ───────────────────────────────────────────
+model TicketRecord {
+  id                    String   @id @default(uuid())
+  serviceDeskRequestId  String
+  incidentId            String
+  subject               String
+  status                String   @default("open") // open, in_progress, resolved, closed
+  priority              String
+  assignee              String?
+  site                  String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  incident              Incident @relation(fields: [incidentId], references: [id])
+
+  @@index([incidentId])
+  @@index([serviceDeskRequestId])
+}
+
+// ─── Filter Rule ─────────────────────────────────────────────
+model FilterRule {
+  id         String  @id @default(uuid())
+  name       String
+  enabled    Boolean @default(true)
+  conditions String  // JSON string: RuleCondition[]
+  matchMode  String  @default("all") // all | any
+  actions    String  // JSON string: RuleAction
+  order      Int     @default(0)
+}
+
+// ─── Audit Log ───────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String   // alert_received, rule_matched, ticket_created, etc.
+  entityType String   // alert, incident, ticket, alarm, system
+  entityId   String
+  details    String   @default("{}") // JSON string
+  timestamp  DateTime @default(now())
+
+  @@index([action])
+  @@index([entityType, entityId])
+}
+
+// ─── Site Contact ────────────────────────────────────────────
+model SiteContact {
+  id                 String               @id @default(uuid())
+  site               String               @unique
+  personAName        String
+  personAEmail       String
+  personAPhone       String
+
+  escalationContacts EscalationContact[]
+}
+
+// ─── Escalation Contact ──────────────────────────────────────
+model EscalationContact {
+  id            String      @id @default(uuid())
+  siteContactId String
+  name          String
+  email         String
+  phone         String
+  order         Int         @default(0) // escalation order
+
+  siteContact   SiteContact @relation(fields: [siteContactId], references: [id], onDelete: Cascade)
+}

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db/in-memory';
+import { db } from '../db/prisma';
 import { SiteContact, EscalationPolicy } from '../types/models';
 
 export function createConfigRoutes(): Router {
@@ -8,15 +8,15 @@ export function createConfigRoutes(): Router {
   /**
    * GET /api/config/site-contacts — List all site contact mappings
    */
-  router.get('/site-contacts', (_req: Request, res: Response) => {
-    const contacts = db.getAllSiteContacts();
+  router.get('/site-contacts', async (_req: Request, res: Response) => {
+    const contacts = await db.getAllSiteContacts();
     res.json({ siteContacts: contacts, total: contacts.length });
   });
 
   /**
    * PUT /api/config/site-contacts — Update site contact mappings (bulk)
    */
-  router.put('/site-contacts', (req: Request, res: Response) => {
+  router.put('/site-contacts', async (req: Request, res: Response) => {
     const body = req.body as { siteContacts: SiteContact[] };
 
     if (!body.siteContacts || !Array.isArray(body.siteContacts)) {
@@ -35,12 +35,13 @@ export function createConfigRoutes(): Router {
         });
         return;
       }
-      db.saveSiteContact(contact);
+      await db.saveSiteContact(contact);
     }
 
+    const allContacts = await db.getAllSiteContacts();
     res.json({
       message: `Updated ${body.siteContacts.length} site contact(s)`,
-      siteContacts: db.getAllSiteContacts(),
+      siteContacts: allContacts,
     });
   });
 

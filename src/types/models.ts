@@ -9,7 +9,7 @@ export type Severity = 'Critical' | 'Trouble' | 'Attention' | 'Clear';
 export type AlertStatus = 'new' | 'processing' | 'ticket_created' | 'acknowledged' | 'ignored' | 'cleared';
 
 export interface Alert {
-  id: string;                    // internal UUID
+  id: string;                    
   alarmId: string;               // OpManager alarm ID
   cycleId: string;               // OpManager alarm cycle ID
   severity: Severity;

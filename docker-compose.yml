@@ -1,0 +1,19 @@
+services:
+  noc-automation:
+    build: .
+    container_name: noc-automation
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist SQLite database outside the container
+      - noc-data:/app/data
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/noc.db
+    restart: unless-stopped
+
+volumes:
+  noc-data:
+    driver: local

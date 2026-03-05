@@ -1,19 +1,26 @@
 import { v4 as uuid } from 'uuid';
-import { db } from './db/in-memory';
+import { db } from './db/prisma';
 import { FilterRule } from './types/rules';
 import { SiteContact } from './types/models';
 
 /**
- * Seeds the in-memory database with default filter rules and sample site contacts.
- * This runs once at startup.
+ * Seeds the database with default filter rules and sample site contacts.
+ * This runs once at startup. It checks if data already exists to avoid duplicates.
  */
-export function seedDefaultData(): void {
-  seedFilterRules();
-  seedSiteContacts();
+export async function seedDefaultData(): Promise<void> {
+  await seedFilterRules();
+  await seedSiteContacts();
   console.log('[Seed] Default data loaded successfully');
 }
 
-function seedFilterRules(): void {
+async function seedFilterRules(): Promise<void> {
+  // Check if rules already exist
+  const existing = await db.getAllRules();
+  if (existing.length > 0) {
+    console.log(`[Seed] ${existing.length} rules already exist, skipping rule seed`);
+    return;
+  }
+
   const rules: FilterRule[] = [
     {
       id: uuid(),
@@ -93,11 +100,20 @@ function seedFilterRules(): void {
     },
   ];
 
-  rules.forEach((r) => db.saveRule(r));
+  for (const r of rules) {
+    await db.saveRule(r);
+  }
   console.log(`[Seed] Loaded ${rules.length} default filter rules`);
 }
 
-function seedSiteContacts(): void {
+async function seedSiteContacts(): Promise<void> {
+  // Check if contacts already exist
+  const existing = await db.getAllSiteContacts();
+  if (existing.length > 0) {
+    console.log(`[Seed] ${existing.length} site contacts already exist, skipping contact seed`);
+    return;
+  }
+
   const contacts: SiteContact[] = [
     {
       site: 'HQ-Mumbai',
@@ -171,6 +187,8 @@ function seedSiteContacts(): void {
     },
   ];
 
-  contacts.forEach((c) => db.saveSiteContact(c));
+  for (const c of contacts) {
+    await db.saveSiteContact(c);
+  }
   console.log(`[Seed] Loaded ${contacts.length} sample site contacts`);
 }

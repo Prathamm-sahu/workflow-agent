@@ -1,8 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 
-/**
- * Global error handling middleware.
- */
 export function errorHandler(
   err: Error,
   _req: Request,
