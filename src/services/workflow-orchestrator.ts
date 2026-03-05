@@ -154,12 +154,6 @@ export class WorkflowOrchestrator {
     alert: Alert,
     rule: FilterRule
   ): Promise<string> {
-    // Get site contact for assignment
-    const siteContact = await db.getSiteContact(alert.site);
-
-    console.log('Site Contact:', siteContact);
-    const assignee = siteContact?.personA;
-
     const description = this.buildTicketDescription(incident, alert);
 
     const input: ServiceDeskRequestInput = {
@@ -177,14 +171,6 @@ export class WorkflowOrchestrator {
       },
     };
 
-    // Assign to site tech if known
-    if (assignee) {
-      input.request.technician = {
-        name: assignee.name,
-        email_id: assignee.email,
-      };
-    }
-
     try {
       console.log('Creating ticket in ServiceDesk Plus...');
       const result = await this.serviceDeskClient.createRequest(input);
@@ -197,7 +183,7 @@ export class WorkflowOrchestrator {
         subject: input.request.subject,
         status: 'open',
         priority: rule.actions.priority || 'High',
-        assignee: assignee?.name || null,
+        assignee: null,
         site: alert.site,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -212,7 +198,6 @@ export class WorkflowOrchestrator {
         incidentId: incident.id,
         subject: input.request.subject,
         priority: rule.actions.priority,
-        assignee: assignee?.name,
       });
 
       return result.id;

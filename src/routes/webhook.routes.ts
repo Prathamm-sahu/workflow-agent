@@ -5,15 +5,10 @@ import { OpManagerWebhookPayload } from '../types/opmanager';
 export function createWebhookRoutes(orchestrator: WorkflowOrchestrator): Router {
   const router = Router();
 
-  /**
-   * POST /api/webhooks/opmanager
-   * Receives OpManager alarm webhooks and processes them through the workflow.
-   */
   router.post('/opmanager', async (req: Request, res: Response) => {
     try {
       const payload = req.body as OpManagerWebhookPayload;
 
-      // Basic validation
       if (!payload || !payload.alarm) {
         res.status(400).json({
           error: 'Invalid payload',
@@ -22,7 +17,6 @@ export function createWebhookRoutes(orchestrator: WorkflowOrchestrator): Router 
         return;
       }
 
-      // Process asynchronously — return 202 immediately
       res.status(202).json({
         status: 'accepted',
         message: 'Webhook received and queued for processing',

@@ -42,6 +42,17 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_URL=file:/app/data/noc.db
 
+# OpenTelemetry auto-instrumentation
+ENV OTEL_TRACES_EXPORTER="otlp"
+ENV OTEL_METRICS_EXPORTER="otlp"
+ENV OTEL_NODE_RESOURCE_DETECTORS="env,host,os"
+ENV OTEL_NODE_DISABLED_INSTRUMENTATIONS="fs,dns,net"
+ENV OTEL_SERVICE_NAME="workflow-agent"
+ENV NODE_OPTIONS="--require @opentelemetry/auto-instrumentations-node/register"
+
+# OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_EXPORTER_OTLP_HEADERS
+# should be set via docker-compose env_file or environment variables
+
 # Push schema to create tables on first run, then start app
 CMD ["sh", "-c", "npx prisma db push && node dist/index.js"]
 

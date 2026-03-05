@@ -12,6 +12,9 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=file:/app/data/noc.db
+      # Uncomment and set your KloudMate credentials for OpenTelemetry
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.kloudmate.com:4318
+      # - OTEL_EXPORTER_OTLP_HEADERS=authorization=YOUR_PRIVATE_KEY
     restart: unless-stopped
 
 volumes:

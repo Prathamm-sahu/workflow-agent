@@ -134,25 +134,3 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
-// ─── Site Contact ────────────────────────────────────────────
-model SiteContact {
-  id                 String               @id @default(uuid())
-  site               String               @unique
-  personAName        String
-  personAEmail       String
-  personAPhone       String
-
-  escalationContacts EscalationContact[]
-}
-
-// ─── Escalation Contact ──────────────────────────────────────
-model EscalationContact {
-  id            String      @id @default(uuid())
-  siteContactId String
-  name          String
-  email         String
-  phone         String
-  order         Int         @default(0) // escalation order
-
-  siteContact   SiteContact @relation(fields: [siteContactId], references: [id], onDelete: Cascade)
-}

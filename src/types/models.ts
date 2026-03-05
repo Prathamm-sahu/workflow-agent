@@ -107,23 +107,3 @@ export interface AuditLog {
   details: Record<string, unknown>;
   timestamp: Date;
 }
-
-// ─── Site Contact ────────────────────────────────────────────
-export interface ContactInfo {
-  name: string;
-  email: string;
-  phone: string;
-}
-
-export interface SiteContact {
-  site: string;
-  personA: ContactInfo;          // local on-call engineer
-  escalationContacts: ContactInfo[]; // Person B, C (central NOC)
-}
-
-// ─── Escalation Policy ──────────────────────────────────────
-export interface EscalationPolicy {
-  slaBreachMinutes: number;      // escalate after N minutes with no response
-  maxEscalationLevel: number;    // how many escalation contacts to try
-  enabled: boolean;
-}

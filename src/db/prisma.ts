@@ -7,9 +7,6 @@ import {
   TicketRecord,
   AuditLog,
   AuditAction,
-  SiteContact,
-  ContactInfo,
-  EscalationPolicy,
 } from '../types/models';
 import { FilterRule, RuleCondition, RuleAction } from '../types/rules';
 
@@ -17,13 +14,6 @@ import { FilterRule, RuleCondition, RuleAction } from '../types/rules';
 const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
 const adapter = new PrismaLibSql({ url: dbUrl });
 export const prisma = new PrismaClient({ adapter });
-
-// ─── EscalationPolicy (kept in-memory, no table needed) ──────
-let _escalationPolicy: EscalationPolicy = {
-  slaBreachMinutes: 30,
-  maxEscalationLevel: 2,
-  enabled: true,
-};
 
 // ─── Helper: convert Prisma model rows ↔ app types ───────────
 
@@ -110,22 +100,6 @@ function toAuditLog(row: any): AuditLog {
     entityId: row.entityId,
     details: JSON.parse(row.details || '{}'),
     timestamp: row.timestamp,
-  };
-}
-
-function toSiteContact(row: any): SiteContact {
-  return {
-    site: row.site,
-    personA: {
-      name: row.personAName,
-      email: row.personAEmail,
-      phone: row.personAPhone,
-    },
-    escalationContacts: (row.escalationContacts || []).map((ec: any) => ({
-      name: ec.name,
-      email: ec.email,
-      phone: ec.phone,
-    })),
   };
 }
 
@@ -390,83 +364,6 @@ export const db = {
       take: limit,
     });
     return rows.map(toAuditLog);
-  },
-
-  // ─── Site Contact Methods ─────────────────────────────────
-  async saveSiteContact(contact: SiteContact): Promise<void> {
-    // Upsert by site name
-    const existing = await prisma.siteContact.findUnique({
-      where: { site: contact.site },
-    });
-
-    if (existing) {
-      await prisma.siteContact.update({
-        where: { site: contact.site },
-        data: {
-          personAName: contact.personA.name,
-          personAEmail: contact.personA.email,
-          personAPhone: contact.personA.phone,
-        },
-      });
-      // Replace escalation contacts
-      await prisma.escalationContact.deleteMany({
-        where: { siteContactId: existing.id },
-      });
-      if (contact.escalationContacts.length > 0) {
-        await prisma.escalationContact.createMany({
-          data: contact.escalationContacts.map((ec, i) => ({
-            id: uuid(),
-            siteContactId: existing.id,
-            name: ec.name,
-            email: ec.email,
-            phone: ec.phone,
-            order: i,
-          })),
-        });
-      }
-    } else {
-      await prisma.siteContact.create({
-        data: {
-          id: uuid(),
-          site: contact.site,
-          personAName: contact.personA.name,
-          personAEmail: contact.personA.email,
-          personAPhone: contact.personA.phone,
-          escalationContacts: {
-            create: contact.escalationContacts.map((ec, i) => ({
-              id: uuid(),
-              name: ec.name,
-              email: ec.email,
-              phone: ec.phone,
-              order: i,
-            })),
-          },
-        },
-      });
-    }
-  },
-
-  async getSiteContact(site: string): Promise<SiteContact | undefined> {
-    const row = await prisma.siteContact.findUnique({
-      where: { site },
-      include: { escalationContacts: { orderBy: { order: 'asc' } } },
-    });
-    return row ? toSiteContact(row) : undefined;
-  },
-
-  async getAllSiteContacts(): Promise<SiteContact[]> {
-    const rows = await prisma.siteContact.findMany({
-      include: { escalationContacts: { orderBy: { order: 'asc' } } },
-    });
-    return rows.map(toSiteContact);
-  },
-
-  // ─── Escalation Policy (in-memory) ────────────────────────
-  get escalationPolicy(): EscalationPolicy {
-    return _escalationPolicy;
-  },
-  set escalationPolicy(val: EscalationPolicy) {
-    _escalationPolicy = val;
   },
 
   // ─── Stats ────────────────────────────────────────────────
