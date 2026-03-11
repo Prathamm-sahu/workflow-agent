@@ -1,0 +1,21 @@
+services:
+  noc-automation:
+    image: ghcr.io/prathamm-sahu/workflow-agent:latest
+    container_name: noc-automation
+    ports:
+      - "3000:3000"
+    volumes:
+      - noc-data:/app/data
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/noc.db
+      # Uncomment and set your KloudMate credentials for OpenTelemetry
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.kloudmate.com:4318
+      # - OTEL_EXPORTER_OTLP_HEADERS=authorization=YOUR_PRIVATE_KEY
+    restart: unless-stopped
+
+volumes:
+  noc-data:
+    driver: local
