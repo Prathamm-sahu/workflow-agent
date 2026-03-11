@@ -14,6 +14,8 @@ export interface AppConfig {
   };
   dryRun: boolean;
   correlationWindowMinutes: number;
+  retentionDays: number;
+  cleanupIntervalHours: number;
 }
 
 export function loadConfig(): AppConfig {
@@ -29,5 +31,7 @@ export function loadConfig(): AppConfig {
     },
     dryRun: process.env.DRY_RUN === 'true',
     correlationWindowMinutes: parseInt(process.env.CORRELATION_WINDOW_MINUTES || '5', 10),
+    retentionDays: parseInt(process.env.RETENTION_DAYS || '30', 10),
+    cleanupIntervalHours: parseInt(process.env.CLEANUP_INTERVAL_HOURS || '24', 10),
   };
 }

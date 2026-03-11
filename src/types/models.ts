@@ -97,6 +97,7 @@ export type AuditAction =
   | 'alarm_acknowledged'
   | 'alarm_cleared'
   | 'escalation_triggered'
+  | 'cleanup_completed'
   | 'error';
 
 export interface AuditLog {

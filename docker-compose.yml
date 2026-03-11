@@ -1,11 +1,12 @@
 services:
   noc-automation:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: noc-automation
     ports:
       - "3000:3000"
     volumes:
-      # Persist SQLite database outside the container
       - noc-data:/app/data
     env_file:
       - .env

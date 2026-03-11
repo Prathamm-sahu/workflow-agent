@@ -8,6 +8,7 @@ import { createDashboardRoutes } from './routes/dashboard.routes';
 import { createConfigRoutes } from './routes/config.routes';
 import { errorHandler } from './middleware/error-handler';
 import { seedDefaultData } from './seed';
+import { CleanupService } from './services/cleanup.service';
 
 const config = loadConfig();
 const app = express();
@@ -30,14 +31,36 @@ app.use(errorHandler);
 async function main() {
   await seedDefaultData();
 
-  app.listen(config.port, () => {
+  // Start the cleanup scheduler
+  const cleanupService = new CleanupService({
+    retentionDays: config.retentionDays,
+    intervalMs: config.cleanupIntervalHours * 60 * 60 * 1000,
+  });
+  cleanupService.start();
+
+  const server = app.listen(config.port, () => {
     console.log(`\n🚀 NOC Automation Server running on port ${config.port}`);
     console.log(`   Mode: ${config.dryRun ? 'DRY-RUN (no external API calls)' : 'LIVE'}`);
     console.log(`   Database: SQLite (Prisma)`);
     console.log(`   ServiceDesk: ${config.serviceDesk.baseUrl}`);
     console.log(`   OpManager:   ${config.opManager.baseUrl}`);
-    console.log(`   Correlation Window: ${config.correlationWindowMinutes} minutes\n`);
+    console.log(`   Correlation Window: ${config.correlationWindowMinutes} minutes`);
+    console.log(`   Data Retention: ${config.retentionDays} days`);
+    console.log(`   Cleanup Interval: ${config.cleanupIntervalHours}h\n`);
   });
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n[Shutdown] Stopping cleanup scheduler...');
+    cleanupService.stop();
+    console.log('[Shutdown] Closing HTTP server...');
+    server.close(() => {
+      console.log('[Shutdown] Server closed. Exiting.');
+      process.exit(0);
+    });
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 main().catch((err) => {

@@ -1,6 +1,8 @@
 node_modules
 dist
 prisma/dev.db
+dev.db
+*.db
 .env
 .git
 .gitignore
