@@ -149,25 +149,63 @@ export class WorkflowOrchestrator {
     };
   }
 
+  /**
+   * Maps rule priority (e.g. "High", "Critical") to ServiceDesk Plus priority format.
+   */
+  private mapPriority(rulePriority: string): string {
+    const priorityMap: Record<string, string> = {
+      'Critical': 'Critical (P1)',
+      'High': 'High (P2)',
+      'Medium': 'Normal (P3)',
+      'Normal': 'Normal (P3)',
+      'Low': 'Low (P4)',
+    };
+    return priorityMap[rulePriority] || 'Normal (P3)';
+  }
+
+  /**
+   * Determines the ServiceDesk request type based on alert severity.
+   */
+  private getRequestType(severity: string): string {
+    switch (severity) {
+      case 'Critical':
+        return 'SOCR-Incidents';
+      case 'Trouble':
+        return 'Incident Request';
+      default:
+        return 'Service Request';
+    }
+  }
+
   private async createTicket(
     incident: Incident,
     alert: Alert,
     rule: FilterRule
   ): Promise<string> {
     const description = this.buildTicketDescription(incident, alert);
+    const mappedPriority = this.mapPriority(rule.actions.priority || 'High');
+    const requestType = this.getRequestType(alert.severity);
 
     const input: ServiceDeskRequestInput = {
       request: {
-        subject: `[${alert.severity}] ${alert.eventType} — ${alert.deviceName} at ${alert.site}`,
+        subject: `NOC Alert: ${alert.severity} - ${alert.eventType} on ${alert.deviceName} (${alert.deviceIp}) at ${alert.site}`,
         description,
-        priority: { name: rule.actions.priority || 'High' },
-        request_type: { name: 'Incident' },
-        category: { name: 'Network' },
-        urgency: { name: alert.severity === 'Critical' ? 'Urgent' : 'Normal' },
+        priority: { name: mappedPriority },
+        request_type: { name: requestType },
+        category: { name: 'PROACTIVE SUPPORT' },
+        site: { name: 'Cochin' },
+        group: { name: 'ONSITE', site: alert.site, id: '22503' },
         requester: {
-          id: "4",
-          name: "administrator"
-        }
+          id: '56473',
+          name: 'NOC Ai'
+        },
+        udf_fields: {
+          udf_sline_1292: null,
+          udf_sline_1290: 'Nocai',
+          udf_sline_1291: null,
+          udf_date_4802: null,
+          udf_date_4801: null,
+        },
       },
     };
 
@@ -182,7 +220,7 @@ export class WorkflowOrchestrator {
         incidentId: incident.id,
         subject: input.request.subject,
         status: 'open',
-        priority: rule.actions.priority || 'High',
+        priority: mappedPriority,
         assignee: null,
         site: alert.site,
         createdAt: new Date(),
@@ -197,7 +235,7 @@ export class WorkflowOrchestrator {
       await this.auditService.log('ticket_created', 'ticket', result.id, {
         incidentId: incident.id,
         subject: input.request.subject,
-        priority: rule.actions.priority,
+        priority: mappedPriority,
       });
 
       return result.id;

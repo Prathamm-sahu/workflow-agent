@@ -12,8 +12,9 @@ export interface ServiceDeskRequestInput {
     item?: { name: string };
     urgency?: { name: string };
     impact?: { name: string };
-    group?: { name: string };
+    group?: { name: string, site: string, id: string };
     request_type?: { name: string };
+    udf_fields?: Record<string, string | null>;
   };
 }
 

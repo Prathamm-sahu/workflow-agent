@@ -20,7 +20,7 @@ export class ServiceDeskClient {
 
     // Create axios instance with self-signed cert support (equivalent to curl -k)
     this.http = axios.create({
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      // httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/vnd.manageengine.sdp.v3+json',
